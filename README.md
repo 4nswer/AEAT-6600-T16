@@ -8,11 +8,19 @@ As a result porting of the code to other microprocessors is non trivial and will
 
 See the circuit diagram for connection details. Pin assignment on the Micro is as follows:
 
-D0 - MAG_HI/OTP_ERR
-D1 - MAG_LO/OTP_PROG_STAT
+D8 - MAG_HI/OTP_ERR
+D9 - MAG_LO/OTP_PROG_STAT
 D2 - ALIGN
 D3 - PWRDOWN
 D4 - PROG
 D5 - NCS
 D6 - SSI CLK
 D7 - SSI DATA
+
+The arduino listens for a character on the serial port. This changes the controller mode to one of the following:
+
+'a' - Read position mode. Polls the position data every 200ms and posts the data to the serial port. Currently hardcoded to read 10 bits which is the chip default.
+'b' - Magnetic intensity mode. Reports the state of the 2 magnetic intensity pins in the form of plain text messages.
+'c' - Magnetic alignment mode. Changes the chip to alignment mode and polls the alignment value every 100ms and posts the data to the serial port.
+'d' - Programming mode. Currently a work in progress.
+'e' - Exits the selected mode.
