@@ -33,6 +33,7 @@ void setup() {
   pinMode(CLOCK_PIN, OUTPUT);
   digitalWrite(CLOCK_PIN, HIGH);
   Serial.begin(115200);
+  Serial.println("Options: a - position, b - magnetic field strength, c - alignment test, d - programming, e - exit current mode");
 }
 
 void loop() {
@@ -71,9 +72,23 @@ void loop() {
       }
       delay(200);
     }
-    
     break;
-  
+
+    case 'c':
+      while (Serial.read()!='e')
+      {
+        digitalWrite(ALIGN,HIGH);
+        Serial.print("The alignment value is: ");
+        Serial.println(SSI_Shift_In(DATA_PIN, CLOCK_PIN, 16));
+        delay(100);
+      }
+      digitalWrite(ALIGN,LOW);
+    break;
+
+    case 'd':
+    SSI_Shift_Out(32,0b00000000000000000000000000000000);
+    break;
+
   default:
     break;
   }
@@ -81,13 +96,13 @@ void loop() {
 
 //read the current angular position
 float readPosition() {
-  unsigned long rawData = shiftIn(DATA_PIN, CLOCK_PIN, BIT_COUNT);
+  unsigned long rawData = SSI_Shift_In(DATA_PIN, CLOCK_PIN, BIT_COUNT);
   delayMicroseconds(25);  // Clock must be high for at least 20 microseconds before a new sample can be taken
   return ((rawData & 0x03FF) * 360UL) / 1024.0; // Return reading scaled to 360deg with two point precision
 }
 
 //read in a byte of data from the digital input of the board.
-unsigned long shiftIn(const int data_pin, const int clock_pin, const int bit_count) {
+unsigned long SSI_Shift_In(const int data_pin, const int clock_pin, const int bit_count) {
   unsigned long data = 0;
 
   for (int i=0; i<bit_count; i++) {
@@ -98,8 +113,24 @@ unsigned long shiftIn(const int data_pin, const int clock_pin, const int bit_cou
     delayMicroseconds(1); // This is shorter than for the low time to account for the time read the port below. 
     data |= (bitRead(PINE,6)); // append the new read bit to the whole read data.
     /*bitRead(port,bit) is defined in arduino.h and takes approximately 1us.
-     * data |= digitalRead(data_pin); <- takes about 4us and limits the SSI rate to 100kHz. It is also increases the jitter.
+     * data |= digitalRead(data_pin); <- takes about 4us and limits the SSI rate to less than 100kHz. It is also increases the jitter.
      */
   }
   return data;
+}
+
+void SSI_Shift_Out(const int bit_count, int progData) {
+  pinMode(DATA_PIN, OUTPUT);
+  for (int i=0; i<bit_count; i++) {
+    PORTD &= ~(1 << 7); // clock pin low
+    delayMicroseconds(2);
+    PORTD |= (1 << 7); // clock pin high
+    delayMicroseconds(1); // This is shorter than for the low time to account for the time read the port below. 
+    bitWrite (PORTE,i, bitRead(progData,i));
+    //data |= (bitRead(PINE,6)); // append the new read bit to the whole read data.
+    /*bitRead(port,bit) is defined in arduino.h and takes approximately 1us.
+     * data |= digitalRead(data_pin); <- takes about 4us and limits the SSI rate to 100kHz. It is also increases the jitter.
+     */
+  }
+  pinMode(DATA_PIN, INPUT);
 }
