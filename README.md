@@ -9,13 +9,21 @@ As a result porting of the code to other microprocessors is non trivial and will
 See the circuit diagram for connection details. Pin assignment on the Micro is as follows:
 
 D8 - MAG_HI/OTP_ERR
+
 D9 - MAG_LO/OTP_PROG_STAT
+
 D2 - ALIGN
+
 D3 - PWRDOWN
+
 D4 - PROG
+
 D5 - NCS
+
 D6 - SSI CLK
+
 D7 - SSI DATA
+
 
 The arduino listens for a character on the serial port. This changes the controller mode to one of the following:
 
