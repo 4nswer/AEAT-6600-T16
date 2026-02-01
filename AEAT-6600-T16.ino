@@ -1,7 +1,7 @@
 /**
  * @file AEAT-6600-T16.ino
  * @brief Production-ready firmware for Broadcom AEAT-6600-T16 magnetic encoder interface
- * @version 2.0.0
+ * @version 2.1.0
  * @date 2025-11-04
  *
  * @details
@@ -12,7 +12,7 @@
  * - Real-time position reading (10-bit resolution, 360° output)
  * - Magnetic field strength monitoring
  * - Alignment mode testing
- * - Programming interface for encoder configuration
+ * - Comprehensive programming interface for encoder configuration
  * - High-speed SSI communication (~400kHz) via direct port manipulation
  *
  * Hardware Platform: Arduino Micro (ATmega32U4 @ 16MHz)
@@ -94,6 +94,94 @@ namespace TimingConfig {
 }
 
 // ============================================================================
+// OTP PROGRAMMING CONFIGURATION
+// ============================================================================
+
+/**
+ * @brief OTP (One-Time Programmable) Register Bit Field Definitions
+ *
+ * The AEAT-6600-T16 OTP register is 32 bits with the following structure:
+ *
+ * Bit Fields (based on typical encoder programming structure):
+ * - Bits 0-1:   Resolution (2 bits)
+ * - Bits 2-13:  Zero Position Offset (12 bits)
+ * - Bit 14:     Direction (1 bit)
+ * - Bit 15:     Incremental Output Enable (1 bit)
+ * - Bits 16-17: Incremental Mode Selection (2 bits)
+ * - Bit 18:     PWM Output Enable (1 bit)
+ * - Bits 19-21: PWM Period (3 bits)
+ * - Bits 22-31: Reserved/Checksum (10 bits)
+ *
+ * @warning Verify these bit positions against your specific encoder datasheet
+ */
+namespace OTPConfig {
+  // Bit positions
+  const uint8_t RESOLUTION_BIT_POS = 0;
+  const uint8_t ZERO_OFFSET_BIT_POS = 2;
+  const uint8_t DIRECTION_BIT_POS = 14;
+  const uint8_t INCR_ENABLE_BIT_POS = 15;
+  const uint8_t INCR_MODE_BIT_POS = 16;
+  const uint8_t PWM_ENABLE_BIT_POS = 18;
+  const uint8_t PWM_PERIOD_BIT_POS = 19;
+
+  // Bit masks
+  const uint32_t RESOLUTION_MASK = 0x00000003;   // 2 bits
+  const uint32_t ZERO_OFFSET_MASK = 0x00003FFC;  // 12 bits
+  const uint32_t DIRECTION_MASK = 0x00004000;    // 1 bit
+  const uint32_t INCR_ENABLE_MASK = 0x00008000;  // 1 bit
+  const uint32_t INCR_MODE_MASK = 0x00030000;    // 2 bits
+  const uint32_t PWM_ENABLE_MASK = 0x00040000;   // 1 bit
+  const uint32_t PWM_PERIOD_MASK = 0x00380000;   // 3 bits
+
+  // Resolution values
+  const uint8_t RES_10_BIT = 0;  // 00b = 10-bit (1024 positions)
+  const uint8_t RES_12_BIT = 1;  // 01b = 12-bit (4096 positions)
+  const uint8_t RES_14_BIT = 2;  // 10b = 14-bit (16384 positions)
+  const uint8_t RES_16_BIT = 3;  // 11b = 16-bit (65536 positions)
+
+  // Direction values
+  const uint8_t DIR_CLOCKWISE = 0;
+  const uint8_t DIR_COUNTER_CLOCKWISE = 1;
+
+  // Incremental mode values
+  const uint8_t INCR_MODE_ABI = 0;  // Standard quadrature (A, B, Index)
+  const uint8_t INCR_MODE_UVW = 1;  // UVW commutation outputs
+
+  // PWM period values (example - verify in datasheet)
+  const uint8_t PWM_PERIOD_1024US = 0;
+  const uint8_t PWM_PERIOD_2048US = 1;
+  const uint8_t PWM_PERIOD_4096US = 2;
+  const uint8_t PWM_PERIOD_8192US = 3;
+}
+
+/**
+ * @brief Encoder OTP Configuration Structure
+ */
+struct EncoderOTPConfig {
+  uint8_t resolution;           ///< Resolution: 0=10bit, 1=12bit, 2=14bit, 3=16bit
+  uint16_t zeroOffset;          ///< Zero position offset (0-4095)
+  uint8_t direction;            ///< Rotation direction: 0=CW, 1=CCW
+  bool incrementalEnable;       ///< Enable incremental outputs
+  uint8_t incrementalMode;      ///< Incremental mode: 0=ABI, 1=UVW
+  bool pwmEnable;               ///< Enable PWM output
+  uint8_t pwmPeriod;            ///< PWM period selection (0-7)
+
+  // Constructor with defaults
+  EncoderOTPConfig() :
+    resolution(OTPConfig::RES_10_BIT),
+    zeroOffset(0),
+    direction(OTPConfig::DIR_CLOCKWISE),
+    incrementalEnable(false),
+    incrementalMode(OTPConfig::INCR_MODE_ABI),
+    pwmEnable(false),
+    pwmPeriod(OTPConfig::PWM_PERIOD_1024US)
+  {}
+};
+
+// Global configuration storage
+EncoderOTPConfig g_otpConfig;
+
+// ============================================================================
 // OPERATIONAL MODE DEFINITIONS
 // ============================================================================
 
@@ -144,9 +232,23 @@ void handleAlignmentTestMode();
 void handleProgrammingMode();
 void exitCurrentMode();
 
+// Programming menu functions
+void displayProgrammingMenu();
+void configureResolution();
+void configureZeroOffset();
+void configureDirection();
+void configureIncrementalOutput();
+void configurePWMOutput();
+void previewConfiguration();
+bool writeConfiguration();
+uint32_t buildOTPWord(const EncoderOTPConfig& config);
+void displayOTPWord(uint32_t otpWord);
+
 // Utility functions
 void printMenu();
 void flushSerialInput();
+char waitForSerialInput();
+int readSerialInt(int minVal, int maxVal);
 
 // ============================================================================
 // ARDUINO SETUP
@@ -188,7 +290,7 @@ void setup() {
 
   // Print startup message and menu
   Serial.println(F("========================================"));
-  Serial.println(F("AEAT-6600-T16 Encoder Interface v2.0.0"));
+  Serial.println(F("AEAT-6600-T16 Encoder Interface v2.1.0"));
   Serial.println(F("========================================"));
   Serial.println();
   printMenu();
@@ -428,56 +530,50 @@ void handleAlignmentTestMode() {
 }
 
 /**
- * @brief Programming mode handler
+ * @brief Programming mode handler with comprehensive menu system
  *
- * Writes configuration data to encoder's OTP (One-Time Programmable) memory.
+ * Interactive menu for configuring all encoder OTP parameters.
+ * Allows user to configure each parameter, preview the configuration,
+ * and write to OTP memory with multiple safety confirmations.
  *
  * @warning This writes to OTP memory which cannot be erased.
- *          Use with extreme caution.
- *
- * @note Currently configured with example data. Modify as needed.
  */
 void handleProgrammingMode() {
   Serial.println(F("========================================"));
-  Serial.println(F("WARNING: PROGRAMMING MODE"));
+  Serial.println(F("     OTP PROGRAMMING MODE"));
   Serial.println(F("========================================"));
-  Serial.println(F("This mode writes to OTP memory!"));
-  Serial.println(F("Send 'y' to confirm, any other key to cancel"));
+  Serial.println(F(""));
+  Serial.println(F("⚠️  CRITICAL WARNING ⚠️"));
+  Serial.println(F(""));
+  Serial.println(F("OTP (One-Time Programmable) memory writes are:"));
+  Serial.println(F("  • PERMANENT and IRREVERSIBLE"));
+  Serial.println(F("  • Cannot be erased or modified"));
+  Serial.println(F("  • Will persist across power cycles"));
+  Serial.println(F(""));
+  Serial.println(F("Incorrect configuration may render encoder unusable!"));
+  Serial.println(F(""));
+  Serial.println(F("Recommendations:"));
+  Serial.println(F("  1. Read encoder datasheet carefully"));
+  Serial.println(F("  2. Test configuration on spare encoder first"));
+  Serial.println(F("  3. Verify all settings before programming"));
+  Serial.println(F("  4. Have backup encoder available"));
+  Serial.println(F("========================================"));
+  Serial.println(F(""));
+  Serial.println(F("Continue to programming menu? (y/n)"));
 
-  // Wait for confirmation
-  while (!Serial.available()) {
-    ; // Wait for input
-  }
-
-  char confirm = Serial.read();
-  flushSerialInput();
+  char confirm = waitForSerialInput();
 
   if (confirm != 'y' && confirm != 'Y') {
-    Serial.println(F("Programming cancelled."));
+    Serial.println(F("Programming mode cancelled."));
     exitCurrentMode();
     return;
   }
 
-  // Example programming data (32-bit)
-  // Modify this value based on your requirements
-  uint32_t programmingData = 0b00000000000000000100101100000111;
+  // Reset configuration to defaults
+  g_otpConfig = EncoderOTPConfig();
 
-  Serial.print(F("Programming data: 0x"));
-  Serial.println(programmingData, HEX);
-  Serial.println(F("Writing to encoder..."));
-
-  // Enable programming mode
-  digitalWrite(HardwareConfig::PROG, HIGH);
-  delay(10);
-
-  // Write data via SSI
-  SSI_Shift_Out(32, programmingData);
-
-  // Disable programming mode
-  digitalWrite(HardwareConfig::PROG, LOW);
-
-  Serial.println(F("Programming complete."));
-  Serial.println(F("Verify encoder configuration before using."));
+  // Display and navigate programming menu
+  displayProgrammingMenu();
 
   exitCurrentMode();
 }
@@ -497,6 +593,517 @@ void exitCurrentMode() {
   Serial.println(F("\n>>> Returned to IDLE mode"));
   Serial.println();
   printMenu();
+}
+
+// ============================================================================
+// PROGRAMMING MENU FUNCTIONS
+// ============================================================================
+
+/**
+ * @brief Display and handle programming menu navigation
+ */
+void displayProgrammingMenu() {
+  bool menuActive = true;
+
+  while (menuActive) {
+    Serial.println(F(""));
+    Serial.println(F("╔════════════════════════════════════════╗"));
+    Serial.println(F("║   OTP CONFIGURATION MENU               ║"));
+    Serial.println(F("╚════════════════════════════════════════╝"));
+    Serial.println(F(""));
+    Serial.println(F("Current Configuration:"));
+    Serial.println(F("  1. Resolution:          ") + String(
+      g_otpConfig.resolution == 0 ? "10-bit (1024)" :
+      g_otpConfig.resolution == 1 ? "12-bit (4096)" :
+      g_otpConfig.resolution == 2 ? "14-bit (16384)" : "16-bit (65536)"));
+    Serial.println(F("  2. Zero Offset:         ") + String(g_otpConfig.zeroOffset) + " (" +
+      String((g_otpConfig.zeroOffset * 360.0) / 4096.0, 2) + "°)");
+    Serial.println(F("  3. Direction:           ") + String(
+      g_otpConfig.direction == 0 ? "Clockwise" : "Counter-Clockwise"));
+    Serial.println(F("  4. Incremental Output:  ") + String(
+      g_otpConfig.incrementalEnable ? "Enabled" : "Disabled"));
+    if (g_otpConfig.incrementalEnable) {
+      Serial.println(F("     - Mode:              ") + String(
+        g_otpConfig.incrementalMode == 0 ? "ABI (Quadrature)" : "UVW (Commutation)"));
+    }
+    Serial.println(F("  5. PWM Output:          ") + String(
+      g_otpConfig.pwmEnable ? "Enabled" : "Disabled"));
+    if (g_otpConfig.pwmEnable) {
+      Serial.println(F("     - Period:            ") + String(
+        (1 << (10 + g_otpConfig.pwmPeriod))) + "µs");
+    }
+    Serial.println(F(""));
+    Serial.println(F("Options:"));
+    Serial.println(F("  [1-5] Configure parameter"));
+    Serial.println(F("  [p]   Preview OTP word"));
+    Serial.println(F("  [w]   Write to encoder"));
+    Serial.println(F("  [r]   Reset to defaults"));
+    Serial.println(F("  [x]   Exit without writing"));
+    Serial.println(F(""));
+    Serial.print(F("Enter choice: "));
+
+    char choice = waitForSerialInput();
+    Serial.println(choice);
+    Serial.println();
+
+    switch (choice) {
+      case '1':
+        configureResolution();
+        break;
+      case '2':
+        configureZeroOffset();
+        break;
+      case '3':
+        configureDirection();
+        break;
+      case '4':
+        configureIncrementalOutput();
+        break;
+      case '5':
+        configurePWMOutput();
+        break;
+      case 'p':
+      case 'P':
+        previewConfiguration();
+        break;
+      case 'w':
+      case 'W':
+        if (writeConfiguration()) {
+          menuActive = false;
+        }
+        break;
+      case 'r':
+      case 'R':
+        g_otpConfig = EncoderOTPConfig();
+        Serial.println(F("✓ Configuration reset to defaults"));
+        break;
+      case 'x':
+      case 'X':
+        Serial.println(F("Exiting without writing..."));
+        menuActive = false;
+        break;
+      default:
+        Serial.println(F("Invalid choice. Please try again."));
+        break;
+    }
+  }
+}
+
+/**
+ * @brief Configure encoder resolution
+ */
+void configureResolution() {
+  Serial.println(F("╔════════════════════════════════════════╗"));
+  Serial.println(F("║   Configure Resolution                 ║"));
+  Serial.println(F("╚════════════════════════════════════════╝"));
+  Serial.println(F(""));
+  Serial.println(F("Select resolution:"));
+  Serial.println(F("  [0] 10-bit (1024 positions per revolution)"));
+  Serial.println(F("  [1] 12-bit (4096 positions per revolution)"));
+  Serial.println(F("  [2] 14-bit (16384 positions per revolution)"));
+  Serial.println(F("  [3] 16-bit (65536 positions per revolution)"));
+  Serial.println(F(""));
+  Serial.println(F("Note: Higher resolution requires more processing"));
+  Serial.println(F("      and may reduce maximum update rate."));
+  Serial.println(F(""));
+  Serial.print(F("Enter choice (0-3): "));
+
+  int choice = readSerialInt(0, 3);
+  if (choice >= 0) {
+    g_otpConfig.resolution = choice;
+    Serial.println(F("✓ Resolution configured"));
+  } else {
+    Serial.println(F("✗ Invalid input"));
+  }
+}
+
+/**
+ * @brief Configure zero position offset
+ */
+void configureZeroOffset() {
+  Serial.println(F("╔════════════════════════════════════════╗"));
+  Serial.println(F("║   Configure Zero Position Offset       ║"));
+  Serial.println(F("╚════════════════════════════════════════╝"));
+  Serial.println(F(""));
+  Serial.println(F("The zero offset allows you to set the zero position"));
+  Serial.println(F("at any mechanical position of the encoder."));
+  Serial.println(F(""));
+  Serial.println(F("Current position reading:"));
+  float currentPos = readPosition();
+  Serial.print(F("  "));
+  Serial.print(currentPos, 2);
+  Serial.println(F("°"));
+  Serial.println(F(""));
+  Serial.println(F("Options:"));
+  Serial.println(F("  [1] Set current position as zero"));
+  Serial.println(F("  [2] Enter offset manually (0-4095)"));
+  Serial.println(F("  [3] Enter offset in degrees (0-359.99)"));
+  Serial.println(F("  [0] Cancel"));
+  Serial.println(F(""));
+  Serial.print(F("Enter choice: "));
+
+  int choice = readSerialInt(0, 3);
+
+  if (choice == 1) {
+    // Set current position as zero
+    unsigned long rawData = SSI_Shift_In(HardwareConfig::DATA_PIN, HardwareConfig::CLOCK_PIN, 12);
+    g_otpConfig.zeroOffset = (uint16_t)(rawData & 0x0FFF);
+    Serial.print(F("✓ Zero offset set to: "));
+    Serial.println(g_otpConfig.zeroOffset);
+  } else if (choice == 2) {
+    // Manual offset (0-4095)
+    Serial.print(F("Enter offset (0-4095): "));
+    int offset = readSerialInt(0, 4095);
+    if (offset >= 0) {
+      g_otpConfig.zeroOffset = offset;
+      Serial.println(F("✓ Zero offset configured"));
+    } else {
+      Serial.println(F("✗ Invalid input"));
+    }
+  } else if (choice == 3) {
+    // Offset in degrees
+    Serial.print(F("Enter offset in degrees (0-359): "));
+    int degrees = readSerialInt(0, 359);
+    if (degrees >= 0) {
+      g_otpConfig.zeroOffset = (degrees * 4096) / 360;
+      Serial.print(F("✓ Zero offset set to: "));
+      Serial.print(g_otpConfig.zeroOffset);
+      Serial.print(F(" ("));
+      Serial.print(degrees);
+      Serial.println(F("°)"));
+    } else {
+      Serial.println(F("✗ Invalid input"));
+    }
+  }
+}
+
+/**
+ * @brief Configure rotation direction
+ */
+void configureDirection() {
+  Serial.println(F("╔════════════════════════════════════════╗"));
+  Serial.println(F("║   Configure Rotation Direction         ║"));
+  Serial.println(F("╚════════════════════════════════════════╝"));
+  Serial.println(F(""));
+  Serial.println(F("Select rotation direction:"));
+  Serial.println(F("  [0] Clockwise (CW)"));
+  Serial.println(F("  [1] Counter-Clockwise (CCW)"));
+  Serial.println(F(""));
+  Serial.println(F("This inverts the counting direction."));
+  Serial.println(F("Test with position reading mode before programming."));
+  Serial.println(F(""));
+  Serial.print(F("Enter choice (0-1): "));
+
+  int choice = readSerialInt(0, 1);
+  if (choice >= 0) {
+    g_otpConfig.direction = choice;
+    Serial.println(F("✓ Direction configured"));
+  } else {
+    Serial.println(F("✗ Invalid input"));
+  }
+}
+
+/**
+ * @brief Configure incremental output
+ */
+void configureIncrementalOutput() {
+  Serial.println(F("╔════════════════════════════════════════╗"));
+  Serial.println(F("║   Configure Incremental Output         ║"));
+  Serial.println(F("╚════════════════════════════════════════╝"));
+  Serial.println(F(""));
+  Serial.println(F("Incremental outputs provide real-time position signals"));
+  Serial.println(F("for motor controllers and PLCs."));
+  Serial.println(F(""));
+  Serial.println(F("Enable incremental outputs? (y/n): "));
+
+  char enable = waitForSerialInput();
+  Serial.println(enable);
+
+  if (enable == 'y' || enable == 'Y') {
+    g_otpConfig.incrementalEnable = true;
+
+    Serial.println(F(""));
+    Serial.println(F("Select incremental mode:"));
+    Serial.println(F("  [0] ABI - Standard quadrature (A, B, Index)"));
+    Serial.println(F("      • Most common for general applications"));
+    Serial.println(F("      • A/B: 90° phase shifted quadrature"));
+    Serial.println(F("      • I: One pulse per revolution"));
+    Serial.println(F(""));
+    Serial.println(F("  [1] UVW - Commutation outputs"));
+    Serial.println(F("      • For brushless motor control"));
+    Serial.println(F("      • 120° electrical angle spacing"));
+    Serial.println(F(""));
+    Serial.print(F("Enter choice (0-1): "));
+
+    int mode = readSerialInt(0, 1);
+    if (mode >= 0) {
+      g_otpConfig.incrementalMode = mode;
+      Serial.println(F("✓ Incremental output configured"));
+    } else {
+      Serial.println(F("✗ Invalid input"));
+    }
+  } else {
+    g_otpConfig.incrementalEnable = false;
+    Serial.println(F("✓ Incremental output disabled"));
+  }
+}
+
+/**
+ * @brief Configure PWM output
+ */
+void configurePWMOutput() {
+  Serial.println(F("╔════════════════════════════════════════╗"));
+  Serial.println(F("║   Configure PWM Output                 ║"));
+  Serial.println(F("╚════════════════════════════════════════╝"));
+  Serial.println(F(""));
+  Serial.println(F("PWM output provides position as pulse width."));
+  Serial.println(F("Duty cycle = Position / Max Position"));
+  Serial.println(F(""));
+  Serial.println(F("Enable PWM output? (y/n): "));
+
+  char enable = waitForSerialInput();
+  Serial.println(enable);
+
+  if (enable == 'y' || enable == 'Y') {
+    g_otpConfig.pwmEnable = true;
+
+    Serial.println(F(""));
+    Serial.println(F("Select PWM period:"));
+    Serial.println(F("  [0] 1024µs  (1.024ms, ~976 Hz)"));
+    Serial.println(F("  [1] 2048µs  (2.048ms, ~488 Hz)"));
+    Serial.println(F("  [2] 4096µs  (4.096ms, ~244 Hz)"));
+    Serial.println(F("  [3] 8192µs  (8.192ms, ~122 Hz)"));
+    Serial.println(F(""));
+    Serial.println(F("Note: Longer period = better resolution"));
+    Serial.println(F("      Shorter period = faster update rate"));
+    Serial.println(F(""));
+    Serial.print(F("Enter choice (0-3): "));
+
+    int period = readSerialInt(0, 3);
+    if (period >= 0) {
+      g_otpConfig.pwmPeriod = period;
+      Serial.println(F("✓ PWM output configured"));
+    } else {
+      Serial.println(F("✗ Invalid input"));
+    }
+  } else {
+    g_otpConfig.pwmEnable = false;
+    Serial.println(F("✓ PWM output disabled"));
+  }
+}
+
+/**
+ * @brief Preview the OTP configuration before writing
+ */
+void previewConfiguration() {
+  Serial.println(F("╔════════════════════════════════════════╗"));
+  Serial.println(F("║   Configuration Preview                ║"));
+  Serial.println(F("╚════════════════════════════════════════╝"));
+  Serial.println(F(""));
+
+  uint32_t otpWord = buildOTPWord(g_otpConfig);
+
+  Serial.println(F("Configuration Summary:"));
+  Serial.println(F("────────────────────────────────────────"));
+
+  Serial.print(F("Resolution:        "));
+  switch (g_otpConfig.resolution) {
+    case 0: Serial.println(F("10-bit (1024 positions)")); break;
+    case 1: Serial.println(F("12-bit (4096 positions)")); break;
+    case 2: Serial.println(F("14-bit (16384 positions)")); break;
+    case 3: Serial.println(F("16-bit (65536 positions)")); break;
+  }
+
+  Serial.print(F("Zero Offset:       "));
+  Serial.print(g_otpConfig.zeroOffset);
+  Serial.print(F(" ("));
+  Serial.print((g_otpConfig.zeroOffset * 360.0) / 4096.0, 2);
+  Serial.println(F("°)"));
+
+  Serial.print(F("Direction:         "));
+  Serial.println(g_otpConfig.direction == 0 ? F("Clockwise") : F("Counter-Clockwise"));
+
+  Serial.print(F("Incremental:       "));
+  if (g_otpConfig.incrementalEnable) {
+    Serial.print(F("Enabled - "));
+    Serial.println(g_otpConfig.incrementalMode == 0 ? F("ABI Mode") : F("UVW Mode"));
+  } else {
+    Serial.println(F("Disabled"));
+  }
+
+  Serial.print(F("PWM Output:        "));
+  if (g_otpConfig.pwmEnable) {
+    Serial.print(F("Enabled - Period: "));
+    Serial.print(1 << (10 + g_otpConfig.pwmPeriod));
+    Serial.println(F("µs"));
+  } else {
+    Serial.println(F("Disabled"));
+  }
+
+  Serial.println(F("────────────────────────────────────────"));
+  Serial.println(F(""));
+  displayOTPWord(otpWord);
+
+  Serial.println(F(""));
+  Serial.println(F("Press any key to continue..."));
+  waitForSerialInput();
+}
+
+/**
+ * @brief Write configuration to encoder OTP memory
+ * @return true if write successful, false if cancelled
+ */
+bool writeConfiguration() {
+  Serial.println(F("╔════════════════════════════════════════╗"));
+  Serial.println(F("║   WRITE TO OTP MEMORY                  ║"));
+  Serial.println(F("╚════════════════════════════════════════╝"));
+  Serial.println(F(""));
+
+  // Show configuration preview
+  uint32_t otpWord = buildOTPWord(g_otpConfig);
+  displayOTPWord(otpWord);
+
+  Serial.println(F(""));
+  Serial.println(F("⚠️  FINAL WARNING ⚠️"));
+  Serial.println(F(""));
+  Serial.println(F("This will PERMANENTLY program the encoder."));
+  Serial.println(F("This operation CANNOT be undone."));
+  Serial.println(F(""));
+  Serial.println(F("Have you:"));
+  Serial.println(F("  ✓ Verified all settings are correct?"));
+  Serial.println(F("  ✓ Consulted the encoder datasheet?"));
+  Serial.println(F("  ✓ Tested on a spare encoder (if available)?"));
+  Serial.println(F("  ✓ Made a backup of current configuration?"));
+  Serial.println(F(""));
+  Serial.println(F("Type 'YES' (all capitals) to proceed: "));
+
+  // Read confirmation
+  String confirmation = "";
+  unsigned long startTime = millis();
+  while (millis() - startTime < 30000) { // 30 second timeout
+    if (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\n' || c == '\r') {
+        break;
+      }
+      confirmation += c;
+      Serial.print(c); // Echo character
+    }
+  }
+  Serial.println();
+
+  if (confirmation != "YES") {
+    Serial.println(F("✗ Programming cancelled - incorrect confirmation"));
+    return false;
+  }
+
+  Serial.println(F(""));
+  Serial.println(F("Programming encoder..."));
+  Serial.println(F(""));
+
+  // Check magnetic field before programming
+  bool isHigh, isLow;
+  checkMagneticField(isHigh, isLow);
+  if (isHigh || isLow) {
+    Serial.println(F("✗ ERROR: Magnetic field not optimal!"));
+    Serial.println(F("  Programming requires good magnetic field."));
+    Serial.println(F("  Adjust magnet position and try again."));
+    return false;
+  }
+
+  // Enable programming mode
+  digitalWrite(HardwareConfig::PROG, HIGH);
+  delay(10); // Stabilization time
+
+  // Write OTP data
+  SSI_Shift_Out(32, otpWord);
+
+  // Disable programming mode
+  digitalWrite(HardwareConfig::PROG, LOW);
+  delay(10);
+
+  // Check OTP programming status
+  bool otpError = digitalRead(HardwareConfig::MAG_HI);
+  bool otpComplete = digitalRead(HardwareConfig::MAG_LO);
+
+  Serial.println(F("Programming sequence complete."));
+  Serial.println(F(""));
+
+  if (otpError) {
+    Serial.println(F("✗ ERROR: OTP programming error detected!"));
+    Serial.println(F("  MAG_HI/OTP_ERR pin is HIGH."));
+    Serial.println(F("  Encoder may not be programmed correctly."));
+    Serial.println(F("  Check:"));
+    Serial.println(F("    - Power supply voltage (must be stable 5V)"));
+    Serial.println(F("    - Magnetic field (must be good)"));
+    Serial.println(F("    - Encoder may already be programmed"));
+    return false;
+  } else if (otpComplete) {
+    Serial.println(F("✓ Programming completed successfully!"));
+    Serial.println(F(""));
+    Serial.println(F("Next steps:"));
+    Serial.println(F("  1. Power cycle the encoder"));
+    Serial.println(F("  2. Verify new configuration with position read mode"));
+    Serial.println(F("  3. Test all configured outputs"));
+    Serial.println(F("  4. Document the programmed configuration"));
+    return true;
+  } else {
+    Serial.println(F("⚠  WARNING: Status unclear"));
+    Serial.println(F("  OTP status pins not indicating error or completion."));
+    Serial.println(F("  Verify configuration after power cycle."));
+    return true;
+  }
+}
+
+/**
+ * @brief Build 32-bit OTP word from configuration
+ * @param config Configuration structure
+ * @return 32-bit OTP word ready to write
+ */
+uint32_t buildOTPWord(const EncoderOTPConfig& config) {
+  uint32_t otpWord = 0;
+
+  // Pack configuration into bit fields
+  otpWord |= ((uint32_t)config.resolution & 0x03) << OTPConfig::RESOLUTION_BIT_POS;
+  otpWord |= ((uint32_t)config.zeroOffset & 0x0FFF) << OTPConfig::ZERO_OFFSET_BIT_POS;
+  otpWord |= ((uint32_t)config.direction & 0x01) << OTPConfig::DIRECTION_BIT_POS;
+  otpWord |= ((uint32_t)(config.incrementalEnable ? 1 : 0)) << OTPConfig::INCR_ENABLE_BIT_POS;
+  otpWord |= ((uint32_t)config.incrementalMode & 0x03) << OTPConfig::INCR_MODE_BIT_POS;
+  otpWord |= ((uint32_t)(config.pwmEnable ? 1 : 0)) << OTPConfig::PWM_ENABLE_BIT_POS;
+  otpWord |= ((uint32_t)config.pwmPeriod & 0x07) << OTPConfig::PWM_PERIOD_BIT_POS;
+
+  return otpWord;
+}
+
+/**
+ * @brief Display OTP word in multiple formats
+ * @param otpWord 32-bit OTP word to display
+ */
+void displayOTPWord(uint32_t otpWord) {
+  Serial.println(F("OTP Word (32-bit):"));
+  Serial.println(F("────────────────────────────────────────"));
+
+  Serial.print(F("Hexadecimal:  0x"));
+  if (otpWord < 0x10000000) Serial.print(F("0"));
+  if (otpWord < 0x01000000) Serial.print(F("0"));
+  if (otpWord < 0x00100000) Serial.print(F("0"));
+  if (otpWord < 0x00010000) Serial.print(F("0"));
+  if (otpWord < 0x00001000) Serial.print(F("0"));
+  if (otpWord < 0x00000100) Serial.print(F("0"));
+  if (otpWord < 0x00000010) Serial.print(F("0"));
+  Serial.println(otpWord, HEX);
+
+  Serial.print(F("Decimal:      "));
+  Serial.println(otpWord);
+
+  Serial.print(F("Binary:       0b"));
+  for (int i = 31; i >= 0; i--) {
+    Serial.print((otpWord >> i) & 1);
+    if (i % 8 == 0 && i > 0) Serial.print(F(" "));
+  }
+  Serial.println();
+
+  Serial.println(F("────────────────────────────────────────"));
 }
 
 // ============================================================================
@@ -583,8 +1190,8 @@ void SSI_Shift_Out(const uint8_t bit_count, uint32_t progData) {
       // Start and stop bits are high
       bitWrite(PORTE, HardwareConfig::DATA_PORT_BIT, 1);
     } else {
-      // Data bits
-      bitWrite(PORTE, HardwareConfig::DATA_PORT_BIT, bitRead(progData, i - 1));
+      // Data bits (MSB first)
+      bitWrite(PORTE, HardwareConfig::DATA_PORT_BIT, bitRead(progData, bit_count - i));
     }
 
     PORTD |= (1 << HardwareConfig::CLOCK_PORT_BIT);  // Clock HIGH
@@ -607,7 +1214,7 @@ void printMenu() {
   Serial.println(F("  a - Position Read Mode (continuous angular position)"));
   Serial.println(F("  b - Magnetic Field Check (verify magnet positioning)"));
   Serial.println(F("  c - Alignment Test Mode (check magnetic alignment)"));
-  Serial.println(F("  d - Programming Mode (write encoder configuration)"));
+  Serial.println(F("  d - Programming Mode (configure encoder OTP)"));
   Serial.println(F("  e - Exit current mode"));
   Serial.println(F("  h - Show this menu"));
   Serial.println();
@@ -621,4 +1228,59 @@ void flushSerialInput() {
   while (Serial.available()) {
     Serial.read();
   }
+}
+
+/**
+ * @brief Wait for single character input from serial
+ * @return Character received
+ */
+char waitForSerialInput() {
+  flushSerialInput();
+  while (!Serial.available()) {
+    ; // Wait for input
+  }
+  return Serial.read();
+}
+
+/**
+ * @brief Read integer from serial with validation
+ * @param minVal Minimum valid value
+ * @param maxVal Maximum valid value
+ * @return Value if valid, -1 if invalid
+ */
+int readSerialInt(int minVal, int maxVal) {
+  flushSerialInput();
+
+  String input = "";
+  unsigned long startTime = millis();
+
+  while (millis() - startTime < 30000) { // 30 second timeout
+    if (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\n' || c == '\r') {
+        break;
+      }
+      if (c >= '0' && c <= '9') {
+        input += c;
+        Serial.print(c); // Echo digit
+      }
+    }
+  }
+  Serial.println(); // New line
+
+  if (input.length() == 0) {
+    return -1;
+  }
+
+  int value = input.toInt();
+
+  if (value < minVal || value > maxVal) {
+    Serial.print(F("Error: Value must be between "));
+    Serial.print(minVal);
+    Serial.print(F(" and "));
+    Serial.println(maxVal);
+    return -1;
+  }
+
+  return value;
 }

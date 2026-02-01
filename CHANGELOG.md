@@ -18,6 +18,146 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2025-11-04
+
+### 🎯 Major Feature Release - Comprehensive OTP Programming System
+
+This release adds a complete interactive menu system for programming all encoder features to OTP memory.
+
+### Added
+
+#### Comprehensive Programming System
+- **Interactive Programming Menu**: Full-featured menu-driven programming interface
+  - Step-by-step parameter configuration
+  - Real-time configuration preview
+  - Multiple safety confirmations
+  - Configuration validation before writing
+
+#### OTP Configuration Features
+- **Resolution Configuration**: Select 10-bit, 12-bit, 14-bit, or 16-bit resolution
+- **Zero Position Offset**: Three methods for setting mechanical zero
+  - Set current position as zero (recommended)
+  - Manual offset entry (0-4095 counts)
+  - Degrees-based offset entry (0-359°)
+- **Rotation Direction**: Configure clockwise or counter-clockwise counting
+- **Incremental Output Configuration**:
+  - Enable/disable incremental outputs
+  - ABI mode (standard quadrature with A, B, Index)
+  - UVW mode (three-phase commutation for BLDC motors)
+- **PWM Output Configuration**:
+  - Enable/disable PWM position output
+  - Selectable period: 1024µs, 2048µs, 4096µs, or 8192µs
+  - Trade-off selection (speed vs. resolution)
+
+#### OTP Register Structure
+- **Complete Bit Field Definitions**: All 32-bit OTP register fields documented
+  - Bits 0-1: Resolution (2 bits)
+  - Bits 2-13: Zero position offset (12 bits)
+  - Bit 14: Direction (1 bit)
+  - Bit 15: Incremental enable (1 bit)
+  - Bits 16-17: Incremental mode (2 bits)
+  - Bit 18: PWM enable (1 bit)
+  - Bits 19-21: PWM period (3 bits)
+  - Bits 22-31: Reserved
+- **OTP Word Builder**: Automatic packing of configuration into 32-bit word
+- **Multi-Format Display**: OTP word shown in hexadecimal, decimal, and binary
+
+#### Safety Features
+- **Multi-Level Warnings**: Critical warnings before entering programming mode
+- **Confirmation System**: Must type "YES" (all capitals) to program
+- **Magnetic Field Check**: Automatic verification before programming
+- **Programming Status Verification**: Reads OTP_ERR and OTP_STA pins
+- **Comprehensive Error Reporting**: Detailed error messages with solutions
+
+#### Configuration Management
+- **Preview Function**: Review complete configuration before writing
+- **Reset to Defaults**: Quick reset of all parameters
+- **Exit Without Writing**: Safe abort at any point
+- **Configuration Summary**: Clear display of all current settings
+
+#### New Utility Functions
+- `waitForSerialInput()`: Blocking wait for single character
+- `readSerialInt()`: Validated integer input with range checking (30s timeout)
+- `buildOTPWord()`: Pack configuration structure into OTP word
+- `displayOTPWord()`: Multi-format OTP word display
+- `configureResolution()`: Interactive resolution configuration
+- `configureZeroOffset()`: Interactive zero offset configuration
+- `configureDirection()`: Interactive direction configuration
+- `configureIncrementalOutput()`: Interactive incremental setup
+- `configurePWMOutput()`: Interactive PWM setup
+- `previewConfiguration()`: Configuration preview display
+- `writeConfiguration()`: Complete OTP write procedure
+
+#### Documentation (NEW)
+- **PROGRAMMING_GUIDE.md**: Comprehensive 60+ page programming guide
+  - Complete OTP register structure documentation
+  - Detailed parameter descriptions
+  - Configuration examples for common applications
+  - Troubleshooting guide
+  - Best practices and safety recommendations
+  - Pre/post-programming checklists
+  - Configuration management templates
+  - FAQ section
+
+#### Enhanced Namespace
+- **OTPConfig namespace**: Complete OTP register definitions
+  - Bit positions for all fields
+  - Bit masks for field extraction
+  - Value constants (resolution, direction, modes)
+  - Period calculations for PWM
+
+#### New Data Structures
+- **EncoderOTPConfig struct**: Type-safe configuration storage
+  - Resolution (uint8_t)
+  - Zero offset (uint16_t)
+  - Direction (uint8_t)
+  - Incremental enable (bool)
+  - Incremental mode (uint8_t)
+  - PWM enable (bool)
+  - PWM period (uint8_t)
+  - Constructor with sensible defaults
+
+### Changed
+
+#### Programming Mode Enhancements
+- **Complete Rewrite**: Replaced simple programming with full menu system
+- **Interactive Navigation**: Menu-driven interface replaces hardcoded example
+- **Real-Time Feedback**: Live configuration display with current values
+- **Unit Conversions**: Automatic conversion between counts and degrees
+- **Current Position Reading**: Display current position when setting zero
+
+#### Improved SSI_Shift_Out
+- **MSB First**: Changed bit order to MSB-first for correct OTP programming
+- **Better Documentation**: Enhanced comments explaining bit order
+- **Proper Bit Indexing**: Fixed data bit transmission order
+
+#### Version Update
+- Version bumped from 2.0.0 to 2.1.0
+- Updated startup banner to show v2.1.0
+
+### Fixed
+
+- **Programming Data Transmission**: Corrected bit order in SSI_Shift_Out
+- **Default Configuration**: Added proper default initialization
+- **Menu Exit Handling**: Improved exit behavior from programming menu
+
+### Security
+
+- **Enhanced Safety Mechanisms**:
+  - Multiple confirmation steps prevent accidental programming
+  - Magnetic field verification prevents failed writes
+  - Explicit "YES" confirmation (case-sensitive)
+  - 30-second timeout on input operations
+  - Clear warning messages at every step
+
+### Performance
+
+- **Maintained**: All performance characteristics from v2.0.0 preserved
+- **Input Timeout**: 30-second timeout prevents indefinite blocking
+- **Efficient Display**: Optimized string formatting for menu display
+
+---
+
 ## [2.0.0] - 2025-11-04
 
 ### 🎉 Major Release - Production-Ready Refactor

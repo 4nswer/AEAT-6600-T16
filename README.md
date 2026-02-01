@@ -1,7 +1,7 @@
 # AEAT-6600-T16 Encoder Interface
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.1.0-green.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Arduino-blue.svg)](https://www.arduino.cc/)
 
 > **Production-ready firmware for interfacing with the Broadcom AEAT-6600-T16 magnetic rotary encoder via SSI protocol**
@@ -16,7 +16,7 @@ The AEAT-6600-T16 Encoder Interface is a comprehensive, production-grade Arduino
 - ✅ **Real-Time Position Reading**: 10-bit resolution (0.35° precision)
 - ✅ **Magnetic Field Monitoring**: Automated magnet positioning assistance
 - ✅ **Alignment Testing**: Quality verification during installation
-- ✅ **Programming Interface**: Safe OTP memory configuration
+- ✅ **Comprehensive Programming System**: Interactive menu for OTP configuration
 - ✅ **Production-Ready Code**: Comprehensive documentation, error handling, and testing
 - ✅ **Extensive Documentation**: Architecture, hardware setup, API reference, and development guides
 
@@ -92,6 +92,7 @@ graph LR
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | System architecture, data flow, and design decisions |
 | **[HARDWARE_SETUP.md](HARDWARE_SETUP.md)** | Detailed hardware connection guide with diagrams |
 | **[API_REFERENCE.md](API_REFERENCE.md)** | Complete command reference and usage examples |
+| **[PROGRAMMING_GUIDE.md](PROGRAMMING_GUIDE.md)** | Comprehensive OTP programming guide with examples |
 | **[DEVELOPMENT.md](DEVELOPMENT.md)** | Developer guide for contributing and porting |
 | **[CHANGELOG.md](CHANGELOG.md)** | Version history and release notes |
 
